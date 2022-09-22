@@ -6,7 +6,7 @@ int main()
 {
     try
     {
-        std::ifstream file("../example.json");
+        std::ifstream file("../example/array.json");
         JsonPath jsonPath(file);
     }
     catch (...)

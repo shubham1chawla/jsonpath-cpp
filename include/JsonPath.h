@@ -14,17 +14,20 @@ enum JsonNodeType
 
 class JsonNode
 {
-    std::string _name;
-    std::string _json;
+    std::string _key;
+    std::string _val;
     JsonNodeType _type;
+
     std::map<std::string, int> _lookup;
     std::vector<JsonNode *> _children;
 
 public:
-    JsonNode(std::string name, std::string json, JsonNodeType type);
-    std::string name();
-    std::string json();
+    JsonNode(const std::string &key, const std::string &val, const JsonNodeType type);
+
+    std::string key();
+    std::string val();
     JsonNodeType type();
+
     void addChild(JsonNode *node);
 };
 
@@ -32,10 +35,10 @@ class JsonPath
 {
     JsonNode *root;
 
-    void init(std::string json);
-    JsonNode *parse(std::string name, std::string json);
+    void init(const std::string &json);
+    JsonNode *parse(const std::string &key, const std::string &val);
 
 public:
-    JsonPath(std::string json);
+    JsonPath(const std::string &json);
     JsonPath(std::ifstream &file);
 };

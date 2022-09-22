@@ -42,61 +42,62 @@
 // UTILITY METHODS BELOW
 // -----------------------------------------------------------
 
-std::string ltrim(const std::string &s)
+std::string &trim(std::string &s)
 {
-    size_t start = s.find_first_not_of(WHITESPACE);
-    return (start == std::string::npos) ? "" : s.substr(start);
+    // Erasing whitespaces from the start of the string
+    const size_t sidx = s.find_first_not_of(WHITESPACE);
+    if (sidx != 0 && sidx != std::string::npos)
+        s.erase(s.begin(), s.begin() + s.find_first_not_of(WHITESPACE));
+
+    // Erasing whitespaces from the end of the string
+    const size_t eidx = s.find_last_not_of(WHITESPACE);
+    if (eidx != s.size() - 1 && eidx != std::string::npos)
+        s.resize(eidx + 1);
+
+    return s;
 }
 
-std::string rtrim(const std::string &s)
+std::string extractKey(const std::string &prop)
 {
-    size_t end = s.find_last_not_of(WHITESPACE);
-    return (end == std::string::npos) ? "" : s.substr(0, end + 1);
-}
-
-std::string trim(const std::string &s)
-{
-    return rtrim(ltrim(s));
-}
-
-std::string extractKey(std::string keyValue)
-{
-    int cidx = keyValue.find(COLON);
+    int cidx = prop.find(COLON);
     if (cidx == std::string::npos || cidx < 2)
         throw std::invalid_argument(MALFORMED_JSON_ERROR_MESSAGE);
 
-    std::string left = keyValue.substr(keyValue.find(QUOTE) + 1, cidx - 1);
-    return trim(left.substr(0, left.rfind(QUOTE)));
+    const size_t s = prop.find(QUOTE) + 1;
+    const size_t e = prop.rfind(QUOTE, cidx - 1);
+    return prop.substr(s, e - s);
 }
 
-std::string extractVal(std::string keyValue)
+std::string extractVal(const std::string &prop)
 {
-    int cidx = keyValue.find(COLON);
+    int cidx = prop.find(COLON);
     if (cidx == std::string::npos || cidx < 2)
         throw std::invalid_argument(MALFORMED_JSON_ERROR_MESSAGE);
 
-    return trim(keyValue.substr(cidx + 1));
+    const size_t s = prop.find_first_not_of(WHITESPACE, cidx + 1);
+    const size_t e = prop.find_last_not_of(WHITESPACE) + 1;
+    return prop.substr(s, e - s);
 }
 
 // -----------------------------------------------------------
 // IMPLEMENTATIONs BELOW
 // -----------------------------------------------------------
 
-JsonNode::JsonNode(std::string name, std::string json, JsonNodeType type)
+JsonNode::JsonNode(const std::string &key, const std::string &val, const JsonNodeType type)
 {
-    this->_name = name;
-    this->_json = json;
+    this->_key = key;
+    this->_val = val;
     this->_type = type;
 }
 
-std::string JsonNode::name()
+std::string JsonNode::key()
 {
-    return this->_name;
+    return this->_key;
 }
 
-std::string JsonNode::json()
+std::string JsonNode::val()
 {
-    return this->_json;
+    return this->_val;
 }
 
 JsonNodeType JsonNode::type()
@@ -106,16 +107,15 @@ JsonNodeType JsonNode::type()
 
 void JsonNode::addChild(JsonNode *node)
 {
-    this->_lookup[node->name()] = this->_children.size();
+    this->_lookup[node->key()] = this->_children.size();
     this->_children.push_back(node);
 }
 
-void JsonPath::init(std::string json)
+void JsonPath::init(const std::string &json)
 {
     try
     {
-        json = trim(json);
-        if (json.size() == 0)
+        if (json.find_first_not_of(WHITESPACE) == std::string::npos)
             throw std::invalid_argument(EMPTY_JSON_ERROR_MESSAGE);
         this->root = this->parse(ROOTV, json);
     }
@@ -126,7 +126,7 @@ void JsonPath::init(std::string json)
     }
 }
 
-JsonPath::JsonPath(std::string json)
+JsonPath::JsonPath(const std::string &json)
 {
     this->init(json);
 }
@@ -143,10 +143,13 @@ JsonPath::JsonPath(std::ifstream &file)
     this->init(json);
 }
 
-JsonNode *JsonPath::parse(std::string name, std::string json)
+JsonNode *JsonPath::parse(const std::string &key, const std::string &val)
 {
-    char front = json.front();
-    char back = json.back();
+    const unsigned int fidx = val.find_first_not_of(WHITESPACE);
+    const unsigned int bidx = val.find_last_not_of(WHITESPACE);
+    const char front = val[fidx];
+    const char back = val[bidx];
+
     switch (front)
     {
 
@@ -157,58 +160,57 @@ JsonNode *JsonPath::parse(std::string name, std::string json)
             throw std::invalid_argument(MALFORMED_JSON_ERROR_MESSAGE);
 
         JsonNodeType type = front == CURLO ? OBJ : ARR;
-        JsonNode *node = new JsonNode(name, json, type);
+        JsonNode *node = new JsonNode(key, val, type);
         std::stack<char> stack;
-        std::string segment = "", key = "", val = "";
-        int len = 0;
 
-        for (int i = 1; i < json.size() - 1; i++)
+        std::string _seg = "", _key = "", _val = "";
+        int itemIdx = 0;
+
+        for (int i = fidx + 1; i < bidx; i++)
         {
-            char c = json[i];
+            char c = val[i];
             switch (c)
             {
             case CURLO:
             case SQURO:
                 stack.push(c);
-                segment += c;
+                _seg += c;
                 break;
             case CURLC:
             case SQURC:
                 if ((c == CURLC && stack.top() != CURLO) || (c == SQURC && stack.top() != SQURO))
                     throw std::invalid_argument(MALFORMED_JSON_ERROR_MESSAGE);
                 stack.pop();
-                segment += c;
+                _seg += c;
                 break;
             case COMMA:
                 if (stack.empty())
                 {
-                    segment = trim(segment);
-                    key = type == OBJ ? extractKey(segment) : SQURO + std::to_string(len) + SQURC;
-                    val = type == OBJ ? extractVal(segment) : segment;
-                    node->addChild(this->parse(key, val));
-                    len++;
-                    segment = "";
+                    _key = type == OBJ ? extractKey(_seg) : std::to_string(itemIdx);
+                    _val = type == OBJ ? extractVal(_seg) : trim(_seg);
+                    node->addChild(this->parse(_key, _val));
+                    itemIdx++;
+                    _seg = "";
                 }
                 else
-                    segment += c;
+                    _seg += c;
                 break;
             default:
-                segment += c;
+                _seg += c;
             }
         }
-        segment = trim(segment);
-        key = type == OBJ ? extractKey(segment) : SQURO + std::to_string(len) + SQURC;
-        val = type == OBJ ? extractVal(segment) : segment;
-        node->addChild(this->parse(key, val));
+        _key = type == OBJ ? extractKey(_seg) : std::to_string(itemIdx);
+        _val = type == OBJ ? extractVal(_seg) : trim(_seg);
+        node->addChild(this->parse(_key, _val));
 
         return node;
     }
 
     // JSON segment starts with " indicates STRING
     case QUOTE:
-        if (json.back() != QUOTE)
+        if (back != QUOTE)
             throw std::invalid_argument(MALFORMED_JSON_ERROR_MESSAGE);
-        return new JsonNode(name, json, STR);
+        return new JsonNode(key, val, STR);
 
     // JSON segment starts with either - or 0-9 indicates NUMBER
     case HYPHN:
@@ -222,16 +224,16 @@ JsonNode *JsonPath::parse(std::string name, std::string json)
     case SEVNV:
     case EGHTV:
     case NINEV:
-        return new JsonNode(name, json, NUM);
+        return new JsonNode(key, val, NUM);
     }
 
     // JSON segment equals either "true" or "false" indicates BOOLEAN
-    if ((json == TRUEV || json == FALSV))
-        return new JsonNode(name, json, BOL);
+    if ((val == TRUEV || val == FALSV))
+        return new JsonNode(key, val, BOL);
 
     // JSON segment equals "null" indicates NULL
-    else if (json == NULLV)
-        return new JsonNode(name, json, NUL);
+    else if (val == NULLV)
+        return new JsonNode(key, val, NUL);
 
     // Probably invalid JSON segment
     else
