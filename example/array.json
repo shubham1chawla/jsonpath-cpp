@@ -1,0 +1,17 @@
+[
+    true,
+    {
+        "id": 1,
+        "title": "My Title One",
+        "author": "Adam",
+        "price": 19.99
+    },
+    null,
+    {
+        "id": 2,
+        "title": "My Title Two",
+        "author": "Eve",
+        "price": 25
+    },
+    98.12
+]
